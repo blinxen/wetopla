@@ -12,9 +12,9 @@ use crate::widgets::{ContainerWidget, PopupWidget};
 use crate::{terminal_utils, InputMode};
 use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tui::backend::CrosstermBackend;
-use tui::Terminal;
-use tui::{
+use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
+use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Style},
     widgets::{Block, BorderType, Borders, Paragraph},

@@ -7,7 +7,7 @@ mod widgets;
 
 use application::TodoApp;
 
-use tui::{backend::CrosstermBackend, Terminal};
+use ratatui::{backend::CrosstermBackend, Terminal};
 
 // Enum that contains all possible input modes
 #[derive(PartialEq)]

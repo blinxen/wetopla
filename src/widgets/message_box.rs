@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use tui::{
+use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::Span,
@@ -40,7 +40,7 @@ impl PopupWidget for MessageBox {
         }
     }
 
-    fn render<B: tui::backend::Backend>(&self, frame: &mut Frame<B>) {
+    fn render<B: ratatui::backend::Backend>(&self, frame: &mut Frame<B>) {
         let size = self.size(frame.size());
         // Render main block
         frame.render_widget(

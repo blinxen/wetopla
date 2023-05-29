@@ -1,11 +1,11 @@
 use chrono::{DateTime, Local};
-use serde::{Deserialize, Serialize};
-use tui::{
+use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Paragraph, Row, Table, Widget},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{project::Project, widgets::ContainerWidget};
 
