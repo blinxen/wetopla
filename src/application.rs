@@ -1,35 +1,48 @@
 use std::env;
 use std::fs::OpenOptions;
 use std::io::Stdout;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::event_loop::{Event, EventLoop};
 use crate::project::ProjectContainer;
 use crate::task::TaskContainer;
+use crate::terminal;
+use crate::utils::border;
+use crate::utils::go_to_next_line_in_area;
+use crate::utils::Rect;
 use crate::widgets::line_input::LineInput;
 use crate::widgets::message_box::MessageBox;
+use crate::widgets::Widget;
 use crate::widgets::{ContainerWidget, PopupWidget};
-use crate::{terminal_utils, InputMode};
+use crossterm::cursor::MoveTo;
 use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::backend::CrosstermBackend;
-use ratatui::Terminal;
-use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout},
-    style::{Color, Style},
-    widgets::{Block, BorderType, Borders, Paragraph},
-};
+use crossterm::style;
+use crossterm::style::Color;
+use crossterm::style::PrintStyledContent;
+use crossterm::style::Stylize;
+use crossterm::QueueableCommand;
 
 const MAX_LOG_DURATION: u8 = 3;
+#[derive(Debug, PartialEq)]
+pub enum InputMode {
+    Normal,
+    Insert,
+    Deleting,
+    Saving,
+    Quitting,
+}
 
 // App holds the state of the application
 pub struct TodoApp<'a> {
+    stdout: &'a mut Stdout,
     // Current input mode
     input_mode: InputMode,
     // Container that will manage and display all projects
     projects: ProjectContainer,
     // Container that will manage and display all tasks of a project
-    tasks: TaskContainer<'a>,
+    tasks: TaskContainer,
     // Bool that stores whether the user wants to quit
     // the application or not
     quit: bool,
@@ -37,28 +50,27 @@ pub struct TodoApp<'a> {
     log_message: String,
     // Counter that keeps track of the duration of the current log message
     log_message_duration: u8,
-    // When going in and out of the task editing mode
-    // then the whole terminal needs to be redrawn
-    // TODO: Find out why
-    redraw: bool,
     // Whether the current state was modified
     dirty: bool,
+    // Message box widget
     message_box: MessageBox,
+    // Line input wideget
     line_input: LineInput,
     // Event loop that controls draw and crossterm key events
+    // TODO: Remove event loop and put it in main
     event_loop: EventLoop,
 }
 
 impl<'a> TodoApp<'a> {
-    pub fn new() -> Self {
+    pub fn new(stdout: &'a mut Stdout) -> Self {
         Self {
+            stdout,
             input_mode: InputMode::Normal,
             projects: ProjectContainer::new(true),
             tasks: TaskContainer::new(false),
             quit: false,
             log_message: String::new(),
             log_message_duration: 0,
-            redraw: false,
             dirty: false,
             message_box: MessageBox::new(),
             line_input: LineInput::new(),
@@ -66,17 +78,9 @@ impl<'a> TodoApp<'a> {
         }
     }
 
-    pub async fn run(
-        &mut self,
-        mut terminal: Terminal<CrosstermBackend<Stdout>>,
-    ) -> Result<(), std::io::Error> {
-        // Main loop
+    // Main loop
+    pub async fn run(&mut self) -> Result<(), std::io::Error> {
         loop {
-            if self.redraw {
-                terminal.resize(terminal.size()?)?;
-                self.redraw = false;
-            }
-
             match self.event_loop.event_rx.recv().await {
                 Some(Event::Draw) => {
                     // Reset log message after 5 Draw events
@@ -84,8 +88,6 @@ impl<'a> TodoApp<'a> {
                     if self.log_message_duration == MAX_LOG_DURATION {
                         self.log_message = String::new();
                     }
-                    // Draw application with its widgets
-                    self.draw(&mut terminal)?;
                     // Increment log duration
                     if !self.log_message.is_empty() {
                         self.log_message_duration += 1;
@@ -99,76 +101,90 @@ impl<'a> TodoApp<'a> {
                         || self.input_mode == InputMode::Deleting
                     {
                         self.message_box.process_input(&key);
-                    }
-                    if self.input_mode == InputMode::Insert {
+                    } else if self.input_mode == InputMode::Insert {
                         self.line_input.process_input(&key);
                     }
-                    // Draw directly after processing input
-                    self.draw(&mut terminal)?
                 }
                 _ => {}
             };
 
+            // Render app in terminal
+            self.render()?;
+
             if self.quit {
                 break;
             }
+
+            self.stdout.flush()?;
         }
 
         Ok(())
     }
 
-    fn draw(
-        &mut self,
-        terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    ) -> Result<(), std::io::Error> {
-        terminal.draw(|frame| {
-            // Render main block
-            frame.render_widget(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Wetopla")
-                    .title_alignment(Alignment::Center)
-                    .border_type(BorderType::Rounded),
-                frame.size(),
-            );
-            // Create layout that will contain the body and the footer
-            let outer_layout = Layout::default()
-                .direction(Direction::Vertical)
-                .margin(1)
-                .constraints(
-                    [
-                        Constraint::Percentage(97),
-                        Constraint::Percentage(2),
-                        Constraint::Percentage(1),
-                    ]
-                    .as_ref(),
-                )
-                .split(frame.size());
-            // Create layout that will contain the main widgets
-            let inner_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .horizontal_margin(1)
-                .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
-                .split(outer_layout[0]);
-            // Display projects
-            frame.render_widget(self.projects.clone(), inner_layout[0]);
-            // Display tasks
-            frame.render_widget(self.tasks.clone(), inner_layout[1]);
-            // Footer
-            frame.render_widget(self.mode(), outer_layout[1]);
-            frame.render_widget(Paragraph::new(self.log_message.clone()), outer_layout[2]);
-            // Render helper widgets
-            if self.input_mode == InputMode::Saving
-                || self.input_mode == InputMode::Quitting
-                || self.input_mode == InputMode::Deleting
-            {
-                self.message_box.render(frame);
-            }
+    fn render(&mut self) -> Result<(), std::io::Error> {
+        // Render main block
+        terminal::clear(self.stdout)?;
+        // An area where the application will be drawn
+        // This is normally the whole teminal size
+        let area = terminal::size()?;
+        border(self.stdout, &area, "", false)?;
+        // Display projects
+        let projects_area = Rect {
+            x: area.x + 2,
+            y: area.y + 1,
+            width: (area.width as f32 * 0.20) as u16,
+            // 5 was chosen from: y offset (1) + the number of of lines we want to reserve for (4)
+            // other stuff
+            height: area.height - 5,
+        };
+        self.projects.render(self.stdout, &projects_area)?;
+        // Display tasks
+        let tasks_area = Rect {
+            x: projects_area.width + 3,
+            y: projects_area.y,
+            // 5 was chosen from: x offset (3) + margin left that we want (2)
+            width: area.width - projects_area.width - 5,
+            height: projects_area.height,
+        };
+        self.tasks.render(self.stdout, &tasks_area)?;
+        // Draw mode
+        let mode = match &self.input_mode {
+            InputMode::Normal => ("INPUT", Color::Cyan),
+            InputMode::Insert => ("INSERT", Color::Green),
+            InputMode::Saving => ("SAVING", Color::Magenta),
+            InputMode::Quitting => ("QUITTING", Color::Grey),
+            InputMode::Deleting => ("DELETING", Color::Grey),
+        };
+        self.stdout.queue(MoveTo(area.x + 2, area.height - 3))?;
+        self.stdout.queue(style::SetForegroundColor(Color::Black))?;
+        self.stdout.queue(style::SetBackgroundColor(mode.1))?;
+        self.stdout.write_all(mode.0.as_bytes())?;
+        self.stdout.write_all(
+            " ".repeat((projects_area.width + tasks_area.width) as usize - mode.0.len())
+                .as_bytes(),
+        )?;
+        self.stdout.queue(style::SetBackgroundColor(Color::Reset))?;
 
-            if self.input_mode == InputMode::Insert {
-                self.line_input.render(frame);
-            }
-        })?;
+        // Render log bar
+        go_to_next_line_in_area(self.stdout, &area, 2)?;
+        self.stdout.queue(PrintStyledContent(
+            self.log_message
+                .clone()
+                .stylize()
+                .on(Color::Reset)
+                .with(Color::White),
+        ))?;
+
+        if self.input_mode == InputMode::Saving
+            || self.input_mode == InputMode::Quitting
+            || self.input_mode == InputMode::Deleting
+        {
+            self.message_box.render(self.stdout, &area)?;
+        }
+
+        if self.input_mode == InputMode::Insert {
+            self.line_input.render(self.stdout, &area)?;
+        }
 
         Ok(())
     }
@@ -185,21 +201,21 @@ impl<'a> TodoApp<'a> {
                 if self.dirty {
                     self.input_mode = InputMode::Saving;
                     self.message_box
-                        .set_question("Are you sure that you want to save?".to_string());
+                        .set_question("Are you sure that you want to save?");
                 }
             }
         }
 
         // Handle keys without modifier
-        match self.input_mode {
+        // TODO: Why do we need to borrow here?
+        match &self.input_mode {
             InputMode::Normal => {
                 match key.code {
                     KeyCode::Char('q') => {
                         if self.dirty {
                             self.input_mode = InputMode::Quitting;
-                            self.message_box.set_question(
-                                "Do you want to save your changes before quitting?".to_string(),
-                            );
+                            self.message_box
+                                .set_question("Do you want to save your changes before quitting?");
                         } else {
                             self.quit = true
                         }
@@ -243,7 +259,7 @@ impl<'a> TodoApp<'a> {
                     KeyCode::Delete => {
                         self.input_mode = InputMode::Deleting;
                         self.message_box
-                            .set_question("Are you sure that you want to delete?".to_string());
+                            .set_question("Are you sure that you want to delete?");
                     }
                     KeyCode::Char('d') => {
                         if self.tasks.is_focused() {
@@ -265,21 +281,19 @@ impl<'a> TodoApp<'a> {
                 }
                 KeyCode::Enter => {
                     // Min project / task title is 3
-                    if !self.line_input.get_input().is_empty()
-                        || self.line_input.get_input().len() > 3
-                    {
+                    if !self.line_input.value().is_empty() || self.line_input.value().len() > 3 {
                         self.input_mode = InputMode::Normal;
                         self.dirty = true;
 
                         if self.projects.is_focused() {
                             // Add project to projects list
-                            self.projects.add_project(self.line_input.get_input());
+                            self.projects.add_project(self.line_input.value());
                         } else {
                             // Add task to project and open editor to write the content of the task
                             self.projects
                                 .current_project()
                                 .unwrap()
-                                .add_task(self.line_input.get_input());
+                                .add_task(self.line_input.value());
                             self.edit_task(self.tasks.len()).await;
                         }
                         self.update_tasks();
@@ -343,7 +357,6 @@ impl<'a> TodoApp<'a> {
     }
 
     async fn edit_task(&mut self, task_index: usize) {
-        self.redraw = true;
         // Cancel event loop
         // We cancel it because we will temporarily leave the application and enter
         // the external text editor
@@ -354,7 +367,8 @@ impl<'a> TodoApp<'a> {
                 break;
             }
         }
-        terminal_utils::restore_terminal()
+        // TODO: Remove expect
+        terminal::restore_terminal(self.stdout)
             .expect("Error occured when trying to restore the previous state of the terminal!");
         // TODO: Think about adding some error handling here
         // Maybe display error in the log bar
@@ -362,7 +376,7 @@ impl<'a> TodoApp<'a> {
             .current_project()
             .unwrap()
             .edit_task(task_index);
-        terminal_utils::prepare_terminal()
+        terminal::prepare_terminal(self.stdout)
             .expect("Error occured when trying to prepare the terminal for the application!");
         // Restart event loop after entering the application
         self.event_loop = EventLoop::start();
@@ -372,37 +386,6 @@ impl<'a> TodoApp<'a> {
     // Update tasks in task container
     fn update_tasks(&mut self) {
         self.tasks.set_project(self.projects.current_project());
-    }
-
-    fn mode(&self) -> Paragraph {
-        let mode = if self.input_mode == InputMode::Normal {
-            "NORMAL"
-        } else if self.input_mode == InputMode::Insert {
-            "INSERT"
-        } else if self.input_mode == InputMode::Deleting {
-            "DELETING"
-        } else if self.input_mode == InputMode::Saving {
-            "SAVING"
-        } else if self.input_mode == InputMode::Quitting {
-            "QUITTING"
-        } else {
-            "UNKNOWN MODE"
-        };
-
-        let style = if self.input_mode == InputMode::Normal {
-            Style::default().fg(Color::Black).bg(Color::Cyan)
-        } else if self.input_mode == InputMode::Insert {
-            Style::default().fg(Color::Black).bg(Color::Green)
-        } else if self.input_mode == InputMode::Saving {
-            Style::default().fg(Color::Black).bg(Color::Magenta)
-        } else if self.input_mode == InputMode::Quitting {
-            Style::default().fg(Color::Black).bg(Color::Gray)
-        } else {
-            Style::default().fg(Color::Black).bg(Color::Red)
-        };
-        Paragraph::new(mode)
-            .style(style)
-            .block(Block::default().borders(Borders::NONE))
     }
 
     pub fn data_directory_path() -> PathBuf {
