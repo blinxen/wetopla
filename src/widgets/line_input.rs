@@ -41,7 +41,9 @@ impl Widget for LineInput {
         buffer.write_string(
             area.x + 1,
             area.y + area.height - 2,
-            self.input.clone().reset(),
+            self.input[self.input.len().saturating_sub(area.width as usize - 2)..]
+                .to_string()
+                .reset(),
         );
     }
 

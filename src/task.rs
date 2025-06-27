@@ -124,7 +124,14 @@ impl Widget for TaskContainer {
         // Draw tasks
         for (i, task) in self.tasks.iter().enumerate() {
             let mut styled_task = build_row(vec![
-                (&task.title, title_column_space),
+                (
+                    if task.title.len() > title_column_space - 1 {
+                        &task.title[..title_column_space - 1]
+                    } else {
+                        &task.title
+                    },
+                    title_column_space,
+                ),
                 (&task.done.to_string(), done_column_space),
                 (
                     &task.created_at.format("%d.%m.%Y %H:%M:%S").to_string(),
@@ -154,28 +161,19 @@ impl Widget for TaskContainer {
             None,
             None,
         );
-        let max_line_length = task_content_area.width as usize - 2;
         // TODO: Don't truncate and make this not just a preview but a scrollable area
-        selected_task_content.truncate(max_line_length);
-        for (i, line) in selected_task_content.lines().enumerate() {
-            // If the line fits on the first line then write the full line
-            if !line.is_empty() && line.len() < max_line_length {
-                buffer.write_string(
-                    task_content_area.x + 1,
-                    task_content_area.y + 1 + i as u16,
-                    line.to_string().reset(),
-                );
-            // If the line is not empty and still does not fit on one line
-            // then truncate it
-            } else if line.len() > max_line_length {
-                buffer.write_string(
-                    task_content_area.x + 1,
-                    task_content_area.y + 2 + i as u16,
-                    line[..max_line_length - 3].to_string().reset(),
-                );
-            } else if task_content_area.height - 2 == i as u16 {
-                break;
-            }
+        for (i, line) in selected_task_content
+            .lines()
+            .take(task_content_area.height as usize - 2)
+            .enumerate()
+        {
+            buffer.write_string(
+                task_content_area.x + 1,
+                task_content_area.y + 1 + i as u16,
+                line[..line.len().min(task_content_area.width as usize - 2)]
+                    .to_string()
+                    .reset(),
+            );
         }
     }
 }

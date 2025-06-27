@@ -162,7 +162,16 @@ impl Widget for ProjectContainer {
             None,
         );
         for (i, project) in self.projects.iter().enumerate() {
-            let mut styled_project = format!("{}: {}", i, project.title).white();
+            let mut styled_project = format!(
+                "{}: {}",
+                i,
+                if project.title.len() > area.width as usize - 5 {
+                    project.title[..area.width as usize - 5].to_owned()
+                } else {
+                    project.title.to_owned()
+                }
+            )
+            .white();
             if i == self.selected {
                 styled_project = styled_project.black().on_white();
             }
