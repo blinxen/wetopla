@@ -1,14 +1,14 @@
 use std::{fs, process::Command};
 
 use chrono::Local;
-use serde::{Deserialize, Serialize};
-use tui::{
+use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Widget},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{application::TodoApp, task::Task, widgets::ContainerWidget};
 
@@ -167,7 +167,7 @@ impl Widget for ProjectContainer {
                     style = Style::default().fg(Color::Black).bg(Color::White);
                 }
 
-                let content = vec![Spans::from(Span::styled(
+                let content = vec![Line::from(Span::styled(
                     format!("{}: {}", i, project.title),
                     style,
                 ))];

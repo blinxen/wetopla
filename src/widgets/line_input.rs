@@ -1,7 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use tui::{
+use ratatui::{
     layout::{Alignment, Rect},
     style::{Color, Style},
+    text::Text,
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
@@ -27,10 +28,10 @@ impl PopupWidget for LineInput {
         }
     }
 
-    fn render<B: tui::backend::Backend>(&self, frame: &mut Frame<B>) {
+    fn render<B: ratatui::backend::Backend>(&self, frame: &mut Frame<B>) {
         let size = self.size(frame.size());
         frame.render_widget(
-            Paragraph::new(self.input.as_ref())
+            Paragraph::new(Text::from(self.input.clone()))
                 .style(Style::default().fg(Color::Yellow))
                 .block(
                     Block::default()

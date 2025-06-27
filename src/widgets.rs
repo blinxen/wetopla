@@ -1,5 +1,5 @@
 use crossterm::event::KeyEvent;
-use tui::{layout::Rect, Frame};
+use ratatui::{layout::Rect, Frame};
 
 pub mod line_input;
 pub mod message_box;
@@ -21,7 +21,7 @@ pub trait ContainerWidget {
 pub trait PopupWidget {
     fn new() -> Self;
     // Render the widget
-    fn render<B: tui::backend::Backend>(&self, frame: &mut Frame<B>);
+    fn render<B: ratatui::backend::Backend>(&self, frame: &mut Frame<B>);
     // Get the size of a widget
     fn size(&self, available_rect: Rect) -> Rect;
     // Process the current key_event
