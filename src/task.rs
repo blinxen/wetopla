@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::buffer::Buffer;
 use crate::project::Project;
+use crate::utils::Rect;
 use crate::utils::border;
 use crate::utils::build_row;
 use crate::utils::split_rect_by_height;
-use crate::utils::Rect;
 use crate::widgets::ContainerWidget;
 use crate::widgets::Widget;
 

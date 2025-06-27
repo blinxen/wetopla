@@ -1,10 +1,10 @@
 use crate::utils::Rect;
 use crossterm::{
+    QueueableCommand,
     cursor::MoveTo,
     style::{ContentStyle, PrintStyledContent, StyledContent},
-    QueueableCommand,
 };
-use std::io::{stdout, Stdout, Write};
+use std::io::{Stdout, Write, stdout};
 
 pub struct Buffer {
     current: Vec<Vec<StyledContent<char>>>,

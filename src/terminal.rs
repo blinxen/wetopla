@@ -1,12 +1,12 @@
 use crate::utils::Rect;
+use crossterm::{QueueableCommand, terminal};
 use crossterm::{
     cursor,
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use crossterm::{terminal, QueueableCommand};
-use std::io::{stdout, Error};
+use std::io::{Error, stdout};
 
 // Enable some terminal features that will be required for this app to work
 pub fn prepare_terminal() -> Result<(), Error> {

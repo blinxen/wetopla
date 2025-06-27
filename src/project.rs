@@ -1,7 +1,7 @@
 use crate::application::TodoApp;
 use crate::buffer::Buffer;
 use crate::task::Task;
-use crate::utils::{border, Rect};
+use crate::utils::{Rect, border};
 use crate::widgets::{ContainerWidget, Widget};
 use chrono::Local;
 use crossterm::style::Stylize;

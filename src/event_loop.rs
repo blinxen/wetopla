@@ -1,8 +1,8 @@
 use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::EventStream;
-use futures::{future::FutureExt, StreamExt};
+use futures::{StreamExt, future::FutureExt};
 use tokio::{
-    sync::mpsc::{unbounded_channel, UnboundedReceiver},
+    sync::mpsc::{UnboundedReceiver, unbounded_channel},
     time,
 };
 use tokio_util::sync::CancellationToken;

@@ -9,9 +9,9 @@ use crate::task::TaskContainer;
 use crate::terminal;
 use crate::utils::Rect;
 use crate::utils::{border, build_row};
+use crate::widgets::Widget;
 use crate::widgets::line_input::LineInput;
 use crate::widgets::message_box::MessageBox;
-use crate::widgets::Widget;
 use crate::widgets::{ContainerWidget, PopupWidget};
 use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -24,9 +24,9 @@ const MAX_LOG_DURATION: u8 = 3;
 pub enum InputMode {
     Normal,
     Insert,
-    Deleting,
-    Saving,
-    Quitting,
+    Delete,
+    Save,
+    Quit,
 }
 
 // App holds the state of the application
@@ -90,9 +90,9 @@ impl TodoApp {
                 Some(Event::Key(CrosstermEvent::Key(key))) => {
                     self.handle_key_event(&key).await;
 
-                    if self.input_mode == InputMode::Saving
-                        || self.input_mode == InputMode::Quitting
-                        || self.input_mode == InputMode::Deleting
+                    if self.input_mode == InputMode::Save
+                        || self.input_mode == InputMode::Quit
+                        || self.input_mode == InputMode::Delete
                     {
                         self.message_box.process_input(&key);
                     } else if self.input_mode == InputMode::Insert {
@@ -117,9 +117,9 @@ impl TodoApp {
         match self.input_mode {
             InputMode::Normal => build_row(vec![("INPUT", length)]).black().on_cyan(),
             InputMode::Insert => build_row(vec![("INSERT", length)]).black().on_green(),
-            InputMode::Saving => build_row(vec![("SAVE", length)]).black().on_magenta(),
-            InputMode::Quitting => build_row(vec![("QUIT", length)]).black().on_grey(),
-            InputMode::Deleting => build_row(vec![("DELETE", length)]).black().on_grey(),
+            InputMode::Save => build_row(vec![("SAVE", length)]).black().on_magenta(),
+            InputMode::Quit => build_row(vec![("QUIT", length)]).black().on_grey(),
+            InputMode::Delete => build_row(vec![("DELETE", length)]).black().on_grey(),
         }
     }
 
@@ -163,9 +163,9 @@ impl TodoApp {
             self.mode(area.width as usize - 2),
         );
 
-        if self.input_mode == InputMode::Saving
-            || self.input_mode == InputMode::Quitting
-            || self.input_mode == InputMode::Deleting
+        if self.input_mode == InputMode::Save
+            || self.input_mode == InputMode::Quit
+            || self.input_mode == InputMode::Delete
         {
             self.message_box.render(&mut self.buffer, &area);
         }
@@ -190,7 +190,7 @@ impl TodoApp {
             } = key
             {
                 if self.dirty {
-                    self.input_mode = InputMode::Saving;
+                    self.input_mode = InputMode::Save;
                     self.message_box
                         .set_question("Are you sure that you want to save?");
                 }
@@ -199,71 +199,68 @@ impl TodoApp {
 
         // Handle keys without modifier
         match self.input_mode {
-            InputMode::Normal => {
-                match key.code {
-                    KeyCode::Char('q') => {
-                        if self.dirty {
-                            self.input_mode = InputMode::Quitting;
-                            self.message_box
-                                .set_question("Do you want to save your changes before quitting?");
-                        } else {
-                            self.quit = true
-                        }
-                    }
-                    KeyCode::Char('i') => self.input_mode = InputMode::Insert,
-                    // Navigate between items
-                    KeyCode::Up => {
-                        if self.projects.is_focused() {
-                            self.projects.move_up();
-                            self.update_tasks();
-                        } else {
-                            self.tasks.move_up();
-                        }
-                    }
-                    KeyCode::Down => {
-                        if self.projects.is_focused() {
-                            self.projects.move_down();
-                            self.update_tasks();
-                        } else {
-                            self.tasks.move_down();
-                        }
-                    }
-                    KeyCode::Enter => {
-                        if self.projects.is_focused() && self.projects.current_project().is_some() {
-                            self.projects.set_focus(false);
-                            self.tasks.set_focus(true);
-                        }
-                    }
-                    KeyCode::Esc => {
-                        if self.tasks.is_focused() {
-                            self.projects.set_focus(true);
-                            self.tasks.set_focus(false);
-                        }
-                    }
-                    KeyCode::Char('e') => {
-                        if self.tasks.is_focused() {
-                            self.dirty = true;
-                            self.edit_task(self.tasks.selected()).await;
-                        }
-                    }
-                    KeyCode::Delete => {
-                        self.input_mode = InputMode::Deleting;
+            InputMode::Normal => match key.code {
+                KeyCode::Char('q') => {
+                    if self.dirty {
+                        self.input_mode = InputMode::Quit;
                         self.message_box
-                            .set_question("Are you sure that you want to delete?");
+                            .set_question("Do you want to save your changes before quitting?");
+                    } else {
+                        self.quit = true
                     }
-                    KeyCode::Char('d') => {
-                        if self.tasks.is_focused() {
-                            self.dirty = true;
-                            self.projects
-                                .current_project()
-                                .unwrap()
-                                .toggle_task_done(self.tasks.selected());
-                            self.update_tasks();
-                        }
-                    }
-                    _ => {}
                 }
-            }
+                KeyCode::Char('i') => self.input_mode = InputMode::Insert,
+                KeyCode::Char('d') => {
+                    if self.tasks.is_focused() {
+                        self.dirty = true;
+                        self.projects
+                            .current_project()
+                            .unwrap()
+                            .toggle_task_done(self.tasks.selected());
+                        self.update_tasks();
+                    }
+                }
+                KeyCode::Char('e') => {
+                    if self.tasks.is_focused() {
+                        self.dirty = true;
+                        self.edit_task(self.tasks.selected()).await;
+                    }
+                }
+                KeyCode::Up => {
+                    if self.projects.is_focused() {
+                        self.projects.move_up();
+                        self.update_tasks();
+                    } else {
+                        self.tasks.move_up();
+                    }
+                }
+                KeyCode::Down => {
+                    if self.projects.is_focused() {
+                        self.projects.move_down();
+                        self.update_tasks();
+                    } else {
+                        self.tasks.move_down();
+                    }
+                }
+                KeyCode::Enter => {
+                    if self.projects.is_focused() && self.projects.current_project().is_some() {
+                        self.projects.set_focus(false);
+                        self.tasks.set_focus(true);
+                    }
+                }
+                KeyCode::Esc => {
+                    if self.tasks.is_focused() {
+                        self.projects.set_focus(true);
+                        self.tasks.set_focus(false);
+                    }
+                }
+                KeyCode::Delete => {
+                    self.input_mode = InputMode::Delete;
+                    self.message_box
+                        .set_question("Are you sure that you want to delete?");
+                }
+                _ => {}
+            },
             InputMode::Insert => match key.code {
                 KeyCode::Esc => {
                     self.input_mode = InputMode::Normal;
@@ -292,7 +289,7 @@ impl TodoApp {
                 }
                 _ => {}
             },
-            InputMode::Deleting => match key.code {
+            InputMode::Delete => match key.code {
                 KeyCode::Esc | KeyCode::Enter => {
                     self.input_mode = InputMode::Normal;
 
@@ -313,7 +310,7 @@ impl TodoApp {
                 }
                 _ => {}
             },
-            InputMode::Saving => match key.code {
+            InputMode::Save => match key.code {
                 KeyCode::Esc | KeyCode::Enter => {
                     self.input_mode = InputMode::Normal;
 
@@ -325,7 +322,7 @@ impl TodoApp {
                 }
                 _ => {}
             },
-            InputMode::Quitting => match key.code {
+            InputMode::Quit => match key.code {
                 KeyCode::Esc => {
                     self.input_mode = InputMode::Normal;
                     self.message_box.close();
