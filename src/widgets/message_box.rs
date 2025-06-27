@@ -1,13 +1,13 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
-    text::Span,
-    widgets::{Block, BorderType, Borders, Paragraph},
-    Frame,
-};
+use crossterm::style::{self, Color};
+use crossterm::{cursor, QueueableCommand};
+use std::io::{Stdout, Write};
 
+use crate::utils::border;
+use crate::utils::highlight_button_text;
 use crate::widgets::PopupWidget;
+use crate::widgets::Rect;
+use crate::widgets::Widget;
 
 #[derive(PartialEq)]
 pub enum Button {
@@ -22,17 +22,7 @@ pub struct MessageBox {
 }
 
 impl MessageBox {
-    pub fn accepted(&self) -> bool {
-        self.selected == Button::Ok
-    }
-
-    pub fn set_question(&mut self, text: String) {
-        self.question = text
-    }
-}
-
-impl PopupWidget for MessageBox {
-    fn new() -> Self {
+    pub fn new() -> Self {
         MessageBox {
             question: String::new(),
             visible: false,
@@ -40,57 +30,56 @@ impl PopupWidget for MessageBox {
         }
     }
 
-    fn render<B: ratatui::backend::Backend>(&self, frame: &mut Frame<B>) {
-        let size = self.size(frame.size());
-        // Render main block
-        frame.render_widget(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded),
-            size,
-        );
-
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .vertical_margin(2)
-            .constraints([Constraint::Percentage(75), Constraint::Percentage(25)].as_ref())
-            .split(size);
-
-        frame.render_widget(
-            Paragraph::new(self.question.to_owned()).alignment(Alignment::Center),
-            layout[0],
-        );
-
-        let button_layer = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-            .split(layout[1]);
-
-        let mut yes_style = Style::default();
-        let mut no_style = Style::default();
-        if self.selected == Button::Ok {
-            yes_style = Style::default().fg(Color::Black).bg(Color::White);
-        } else {
-            no_style = Style::default().fg(Color::Black).bg(Color::White);
-        }
-
-        frame.render_widget(
-            Paragraph::new(Span::styled("Yes", yes_style)).alignment(Alignment::Center),
-            button_layer[0],
-        );
-        frame.render_widget(
-            Paragraph::new(Span::styled("No", no_style)).alignment(Alignment::Center),
-            button_layer[1],
-        );
+    pub fn accepted(&self) -> bool {
+        self.selected == Button::Ok
     }
 
-    fn size(&self, available_rect: Rect) -> Rect {
+    pub fn set_question(&mut self, text: &str) {
+        self.question = text.to_owned();
+    }
+}
+
+impl Widget for MessageBox {
+    fn render(&self, stdout: &mut Stdout, available_area: &Rect) -> Result<(), std::io::Error> {
+        let rect = self.rect(available_area);
+        // Draw border
+        border(stdout, &rect, "", true)?;
+        stdout.queue(cursor::MoveTo(
+            rect.x + (rect.width / 2) - (self.question.len() as u16 / 2),
+            rect.y + rect.height / 3,
+        ))?;
+        // Draw message box
+        stdout.queue(style::SetForegroundColor(Color::Yellow))?;
+        stdout.write_all(self.question.as_bytes())?;
+        stdout.queue(style::SetForegroundColor(Color::Reset))?;
+        stdout.queue(cursor::MoveTo(
+            rect.x + 10,
+            rect.y + (rect.height * 80 / 100),
+        ))?;
+        highlight_button_text(stdout, "Yes", self.selected == Button::Ok)?;
+        stdout.queue(cursor::MoveTo(
+            rect.x + rect.width - 10,
+            rect.y + (rect.height * 80 / 100),
+        ))?;
+        highlight_button_text(stdout, "No", self.selected == Button::No)?;
+
+        Ok(())
+    }
+
+    fn rect(&self, available_rect: &Rect) -> Rect {
         // Width and height define max input characters
         // 120 means that we can insert 120 characters
 
-        Rect::new(available_rect.width / 4, available_rect.height / 4, 100, 10)
+        Rect {
+            x: available_rect.width / 4,
+            y: available_rect.height / 4,
+            width: 100,
+            height: 7,
+        }
     }
+}
 
+impl PopupWidget for MessageBox {
     fn process_input(&mut self, key_event: &KeyEvent) {
         // visible was introduced to be able to differentiate between the
         // line_input being displayed and user input after displaying the line_input

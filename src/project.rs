@@ -1,16 +1,14 @@
+use chrono::Local;
+use crossterm::style::{Color, Stylize};
+use crossterm::{style, QueueableCommand};
+use serde::{Deserialize, Serialize};
+use std::io::Stdout;
 use std::{fs, process::Command};
 
-use chrono::Local;
-use ratatui::{
-    buffer::Buffer,
-    layout::{Alignment, Rect},
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Widget},
-};
-use serde::{Deserialize, Serialize};
-
-use crate::{application::TodoApp, task::Task, widgets::ContainerWidget};
+use crate::application::TodoApp;
+use crate::task::Task;
+use crate::utils::{border, go_to_next_line_in_area, reset_cursor_in_area, Rect};
+use crate::widgets::{ContainerWidget, Widget};
 
 // A project contains a list of tasks
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -52,7 +50,7 @@ impl Project {
             return false;
         }
         // Get task that we want to edit
-        let mut task_to_edit = self.tasks.get_mut(task_index).unwrap();
+        let task_to_edit = self.tasks.get_mut(task_index).unwrap();
 
         if !task_to_edit.content.is_empty() {
             // Prefill edit file with the already existing content
@@ -61,10 +59,10 @@ impl Project {
             );
         }
 
-        Command::new("nvim")
+        Command::new("vim")
             .arg(&tmp_file)
             .status()
-            .expect("Could not find editor! Please install neovim!");
+            .expect("Could not find editor! Please install vim!");
 
         // Actually edit the content of the current task
         if let Ok(content) = fs::read_to_string(&tmp_file) {
@@ -77,7 +75,7 @@ impl Project {
     }
 
     pub fn toggle_task_done(&mut self, task_index: usize) {
-        let mut task = self.tasks.get_mut(task_index).unwrap();
+        let task = self.tasks.get_mut(task_index).unwrap();
         task.done = !task.done;
     }
 }
@@ -145,49 +143,33 @@ impl ContainerWidget for ProjectContainer {
         self.focused
     }
 
+    fn toogle_focus(&mut self) {
+        self.focused = !self.focused;
+    }
+
     fn set_focus(&mut self, focus: bool) {
         self.focused = focus;
     }
 }
 
 impl Widget for ProjectContainer {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let mut border_style = Style::default();
-        if self.is_focused() {
-            border_style = border_style.fg(Color::Yellow);
+    fn rect(&self, available_area: &Rect) -> Rect {
+        available_area.clone()
+    }
+
+    fn render(&self, stdout: &mut Stdout, available_area: &Rect) -> Result<(), std::io::Error> {
+        let area = self.rect(available_area);
+        border(stdout, &area, "Projects", self.is_focused())?;
+        reset_cursor_in_area(stdout, &area)?;
+        for (i, project) in self.projects.iter().enumerate() {
+            go_to_next_line_in_area(stdout, &area, 1)?;
+            let mut styled_project = format!("{}: {}", i, project.title).stylize();
+            if i == self.selected {
+                styled_project = styled_project.on(Color::White).with(Color::Black);
+            }
+            stdout.queue(style::PrintStyledContent(styled_project))?;
         }
 
-        let projects: Vec<ListItem> = self
-            .projects
-            .iter()
-            .enumerate()
-            .map(|(i, project)| {
-                let mut style = Style::default();
-                if i == self.selected {
-                    style = Style::default().fg(Color::Black).bg(Color::White);
-                }
-
-                let content = vec![Line::from(Span::styled(
-                    format!("{}: {}", i, project.title),
-                    style,
-                ))];
-                ListItem::new(content)
-            })
-            .collect();
-
-        List::new(projects)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(border_style)
-                    .title(Span::styled(
-                        "Projects",
-                        Style::default()
-                            .fg(Color::White)
-                            .add_modifier(Modifier::BOLD),
-                    ))
-                    .title_alignment(Alignment::Left),
-            )
-            .render(area, buf);
+        Ok(())
     }
 }
