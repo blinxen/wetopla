@@ -1,30 +1,25 @@
 use std::env;
 use std::fs::OpenOptions;
-use std::io::Stdout;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::buffer::Buffer;
 use crate::event_loop::{Event, EventLoop};
 use crate::project::ProjectContainer;
 use crate::task::TaskContainer;
 use crate::terminal;
-use crate::utils::border;
-use crate::utils::go_to_next_line_in_area;
 use crate::utils::Rect;
+use crate::utils::{border, build_row};
 use crate::widgets::line_input::LineInput;
 use crate::widgets::message_box::MessageBox;
 use crate::widgets::Widget;
 use crate::widgets::{ContainerWidget, PopupWidget};
-use crossterm::cursor::MoveTo;
 use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use crossterm::style;
-use crossterm::style::Color;
-use crossterm::style::PrintStyledContent;
 use crossterm::style::Stylize;
-use crossterm::QueueableCommand;
+use crossterm::style::{Color, StyledContent};
 
 const MAX_LOG_DURATION: u8 = 3;
+
 #[derive(Debug, PartialEq)]
 pub enum InputMode {
     Normal,
@@ -35,8 +30,7 @@ pub enum InputMode {
 }
 
 // App holds the state of the application
-pub struct TodoApp<'a> {
-    stdout: &'a mut Stdout,
+pub struct TodoApp {
     // Current input mode
     input_mode: InputMode,
     // Container that will manage and display all projects
@@ -59,12 +53,12 @@ pub struct TodoApp<'a> {
     // Event loop that controls draw and crossterm key events
     // TODO: Remove event loop and put it in main
     event_loop: EventLoop,
+    buffer: Buffer,
 }
 
-impl<'a> TodoApp<'a> {
-    pub fn new(stdout: &'a mut Stdout) -> Self {
+impl TodoApp {
+    pub fn new() -> Self {
         Self {
-            stdout,
             input_mode: InputMode::Normal,
             projects: ProjectContainer::new(true),
             tasks: TaskContainer::new(false),
@@ -75,6 +69,7 @@ impl<'a> TodoApp<'a> {
             message_box: MessageBox::new(),
             line_input: LineInput::new(),
             event_loop: EventLoop::start(),
+            buffer: Buffer::new(terminal::size()),
         }
     }
 
@@ -114,77 +109,74 @@ impl<'a> TodoApp<'a> {
             if self.quit {
                 break;
             }
-
-            self.stdout.flush()?;
         }
 
         Ok(())
     }
 
+    fn mode(&self, length: usize) -> StyledContent<String> {
+        match self.input_mode {
+            InputMode::Normal => build_row(vec![("INPUT", length)]).black().on_cyan(),
+            InputMode::Insert => build_row(vec![("INSERT", length)]).black().on_green(),
+            InputMode::Saving => build_row(vec![("SAVE", length)]).black().on_magenta(),
+            InputMode::Quitting => build_row(vec![("QUIT", length)]).black().on_grey(),
+            InputMode::Deleting => build_row(vec![("DELETE", length)]).black().on_grey(),
+        }
+    }
+
     fn render(&mut self) -> Result<(), std::io::Error> {
-        // Render main block
-        terminal::clear(self.stdout)?;
         // An area where the application will be drawn
         // This is normally the whole teminal size
-        let area = terminal::size()?;
-        border(self.stdout, &area, "", false)?;
+        let area = terminal::size();
+        self.buffer.resize(&area);
+        border(
+            &mut self.buffer,
+            &area,
+            false,
+            String::new(),
+            None,
+            Some(self.log_message.clone().on(Color::Reset).with(Color::White)),
+        );
         // Display projects
         let projects_area = Rect {
-            x: area.x + 2,
+            x: area.x + 1,
             y: area.y + 1,
             width: (area.width as f32 * 0.20) as u16,
             // 5 was chosen from: y offset (1) + the number of of lines we want to reserve for (4)
             // other stuff
             height: area.height - 5,
         };
-        self.projects.render(self.stdout, &projects_area)?;
+        self.projects.render(&mut self.buffer, &projects_area);
+
         // Display tasks
         let tasks_area = Rect {
-            x: projects_area.width + 3,
+            x: projects_area.width + 1,
             y: projects_area.y,
-            // 5 was chosen from: x offset (3) + margin left that we want (2)
-            width: area.width - projects_area.width - 5,
+            width: area.width - projects_area.width - 2,
             height: projects_area.height,
         };
-        self.tasks.render(self.stdout, &tasks_area)?;
-        // Draw mode
-        let mode = match &self.input_mode {
-            InputMode::Normal => ("INPUT", Color::Cyan),
-            InputMode::Insert => ("INSERT", Color::Green),
-            InputMode::Saving => ("SAVING", Color::Magenta),
-            InputMode::Quitting => ("QUITTING", Color::Grey),
-            InputMode::Deleting => ("DELETING", Color::Grey),
-        };
-        self.stdout.queue(MoveTo(area.x + 2, area.height - 3))?;
-        self.stdout.queue(style::SetForegroundColor(Color::Black))?;
-        self.stdout.queue(style::SetBackgroundColor(mode.1))?;
-        self.stdout.write_all(mode.0.as_bytes())?;
-        self.stdout.write_all(
-            " ".repeat((projects_area.width + tasks_area.width) as usize - mode.0.len())
-                .as_bytes(),
-        )?;
-        self.stdout.queue(style::SetBackgroundColor(Color::Reset))?;
+        self.tasks.render(&mut self.buffer, &tasks_area);
 
-        // Render log bar
-        go_to_next_line_in_area(self.stdout, &area, 2)?;
-        self.stdout.queue(PrintStyledContent(
-            self.log_message
-                .clone()
-                .stylize()
-                .on(Color::Reset)
-                .with(Color::White),
-        ))?;
+        // Draw mode
+        self.buffer.write_string(
+            area.x + 1,
+            area.height - 3,
+            self.mode(area.width as usize - 2),
+        );
 
         if self.input_mode == InputMode::Saving
             || self.input_mode == InputMode::Quitting
             || self.input_mode == InputMode::Deleting
         {
-            self.message_box.render(self.stdout, &area)?;
+            self.message_box.render(&mut self.buffer, &area);
         }
 
         if self.input_mode == InputMode::Insert {
-            self.line_input.render(self.stdout, &area)?;
+            self.line_input.render(&mut self.buffer, &area);
         }
+
+        // Write to stdout
+        self.buffer.flush()?;
 
         Ok(())
     }
@@ -368,7 +360,7 @@ impl<'a> TodoApp<'a> {
             }
         }
         // TODO: Remove expect
-        terminal::restore_terminal(self.stdout)
+        terminal::restore_terminal()
             .expect("Error occured when trying to restore the previous state of the terminal!");
         // TODO: Think about adding some error handling here
         // Maybe display error in the log bar
@@ -376,7 +368,7 @@ impl<'a> TodoApp<'a> {
             .current_project()
             .unwrap()
             .edit_task(task_index);
-        terminal::prepare_terminal(self.stdout)
+        terminal::prepare_terminal()
             .expect("Error occured when trying to prepare the terminal for the application!");
         // Restart event loop after entering the application
         self.event_loop = EventLoop::start();

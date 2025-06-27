@@ -1,14 +1,12 @@
-use chrono::Local;
-use crossterm::style::{Color, Stylize};
-use crossterm::{style, QueueableCommand};
-use serde::{Deserialize, Serialize};
-use std::io::Stdout;
-use std::{fs, process::Command};
-
 use crate::application::TodoApp;
+use crate::buffer::Buffer;
 use crate::task::Task;
-use crate::utils::{border, go_to_next_line_in_area, reset_cursor_in_area, Rect};
+use crate::utils::{border, Rect};
 use crate::widgets::{ContainerWidget, Widget};
+use chrono::Local;
+use crossterm::style::Stylize;
+use serde::{Deserialize, Serialize};
+use std::{fs, process::Command};
 
 // A project contains a list of tasks
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -143,10 +141,6 @@ impl ContainerWidget for ProjectContainer {
         self.focused
     }
 
-    fn toogle_focus(&mut self) {
-        self.focused = !self.focused;
-    }
-
     fn set_focus(&mut self, focus: bool) {
         self.focused = focus;
     }
@@ -157,19 +151,22 @@ impl Widget for ProjectContainer {
         available_area.clone()
     }
 
-    fn render(&self, stdout: &mut Stdout, available_area: &Rect) -> Result<(), std::io::Error> {
+    fn render(&self, buffer: &mut Buffer, available_area: &Rect) {
         let area = self.rect(available_area);
-        border(stdout, &area, "Projects", self.is_focused())?;
-        reset_cursor_in_area(stdout, &area)?;
+        border(
+            buffer,
+            &area,
+            self.is_focused(),
+            String::from("Projects"),
+            None,
+            None,
+        );
         for (i, project) in self.projects.iter().enumerate() {
-            go_to_next_line_in_area(stdout, &area, 1)?;
-            let mut styled_project = format!("{}: {}", i, project.title).stylize();
+            let mut styled_project = format!("{}: {}", i, project.title).white();
             if i == self.selected {
-                styled_project = styled_project.on(Color::White).with(Color::Black);
+                styled_project = styled_project.black().on_white();
             }
-            stdout.queue(style::PrintStyledContent(styled_project))?;
+            buffer.write_string(area.x + 1, area.y + 1 + i as u16, styled_project);
         }
-
-        Ok(())
     }
 }

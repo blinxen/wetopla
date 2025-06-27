@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use crossterm::{cursor, QueueableCommand};
-use std::io::{Stdout, Write};
+use crossterm::style::Stylize;
 
+use crate::buffer::Buffer;
 use crate::utils::border;
 use crate::widgets::PopupWidget;
 use crate::widgets::Rect;
@@ -26,18 +26,23 @@ impl LineInput {
 }
 
 impl Widget for LineInput {
-    fn render(&self, stdout: &mut Stdout, available_area: &Rect) -> Result<(), std::io::Error> {
-        let rect = self.rect(available_area);
-        border(stdout, &rect, "Insert value here", true)?;
-        stdout.queue(cursor::MoveTo(rect.x + 1, rect.y + rect.height - 1))?;
+    fn render(&self, buffer: &mut Buffer, available_area: &Rect) {
+        let area = self.rect(available_area);
+        border(
+            buffer,
+            &area,
+            true,
+            String::from("Insert value here"),
+            None,
+            None,
+        );
         // TODO: Make this more user friendly by adding a blinking cursor
         // https://docs.rs/crossterm/latest/crossterm/cursor/enum.SetCursorStyle.html#variant.BlinkingBar
-        stdout.write_all(self.input.as_bytes())?;
-        stdout.queue(cursor::MoveTo(
-            rect.x + 1 + self.input.chars().count() as u16,
-            rect.y + rect.height - 1,
-        ))?;
-        Ok(())
+        buffer.write_string(
+            area.x + 1,
+            area.y + area.height - 2,
+            self.input.clone().reset(),
+        );
     }
 
     fn rect(&self, available_rect: &Rect) -> Rect {
@@ -48,7 +53,7 @@ impl Widget for LineInput {
             x: available_rect.width / 4,
             y: available_rect.height / 4,
             width: 120,
-            height: 2,
+            height: 3,
         }
     }
 }
@@ -60,8 +65,10 @@ impl PopupWidget for LineInput {
         if self.visible {
             match key_event.code {
                 KeyCode::Char(char) => self.input.push(char),
-                KeyCode::Backspace => {
-                    self.input.pop();
+                KeyCode::Backspace => drop(self.input.pop()),
+                KeyCode::Esc => {
+                    self.visible = false;
+                    self.input.clear();
                 }
                 // KeyCode::Left => todo!(),
                 // KeyCode::Right => todo!(),

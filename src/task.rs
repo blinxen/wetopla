@@ -1,16 +1,11 @@
 use chrono::{DateTime, Local};
-use crossterm::style::Color;
 use crossterm::style::Stylize;
-use crossterm::{style, QueueableCommand};
 use serde::{Deserialize, Serialize};
-use std::io::Stdout;
-use std::io::Write;
 
+use crate::buffer::Buffer;
 use crate::project::Project;
 use crate::utils::border;
 use crate::utils::build_row;
-use crate::utils::go_to_next_line_in_area;
-use crate::utils::reset_cursor_in_area;
 use crate::utils::split_rect_by_height;
 use crate::utils::Rect;
 use crate::widgets::ContainerWidget;
@@ -91,10 +86,6 @@ impl ContainerWidget for TaskContainer {
     fn set_focus(&mut self, focus: bool) {
         self.focused = focus;
     }
-
-    fn toogle_focus(&mut self) {
-        self.focused = !self.focused;
-    }
 }
 
 impl Widget for TaskContainer {
@@ -102,79 +93,90 @@ impl Widget for TaskContainer {
         available_area.clone()
     }
 
-    fn render(&self, stdout: &mut Stdout, available_area: &Rect) -> Result<(), std::io::Error> {
+    fn render(&self, buffer: &mut Buffer, available_area: &Rect) {
         let mut selected_task_content = String::new();
+
         // Calculate list and content areas
         let (task_list_area, task_content_area) = split_rect_by_height(&self.rect(available_area));
-        // Draw border
-        border(stdout, &task_list_area, "Tasks", self.is_focused())?;
-        reset_cursor_in_area(stdout, &task_list_area)?;
+        // Draw border for tasks
+        border(
+            buffer,
+            &task_list_area,
+            self.is_focused(),
+            String::from("Tasks"),
+            None,
+            None,
+        );
+
         let done_column_space = 10;
         let created_at_column_space = 19;
         let title_column_space = (task_list_area.width as f32 * 0.95) as u16
             - created_at_column_space
             - done_column_space;
-        let styled_project = build_row(vec![
+
+        // Draw header
+        let header = build_row(vec![
             ("Title", title_column_space as usize),
             ("Done", done_column_space as usize),
             ("Created At", created_at_column_space as usize),
         ]);
-        go_to_next_line_in_area(stdout, &task_list_area, 1)?;
-        stdout.queue(style::PrintStyledContent(styled_project.bold()))?;
+        buffer.write_string(task_list_area.x + 1, task_list_area.y + 1, header.bold());
+
+        // Draw tasks
         for (i, task) in self.tasks.iter().enumerate() {
-            go_to_next_line_in_area(stdout, &task_list_area, 1)?;
-            let mut styled_project = build_row(vec![
+            let mut styled_task = build_row(vec![
                 (&task.title, title_column_space as usize),
                 (&task.done.to_string(), done_column_space as usize),
                 (
                     &task.created_at.format("%d.%m.%Y %H:%M:%S").to_string(),
                     created_at_column_space as usize,
                 ),
-            ]);
+            ])
+            .white();
+
             if i == self.selected {
                 selected_task_content = task.content.clone();
-                styled_project = styled_project.on(Color::White).with(Color::Black);
+                styled_task = styled_task.black().on_white();
             }
-            stdout.queue(style::PrintStyledContent(styled_project))?;
+
+            buffer.write_string(
+                task_list_area.x + 1,
+                task_list_area.y + 2 + i as u16,
+                styled_task,
+            );
         }
 
-        border(stdout, &task_content_area, "Content", false)?;
-        reset_cursor_in_area(stdout, &task_content_area)?;
-        // Buffer used to store the string that will be written to stdout
-        let mut content_to_write: String;
-        // Max line length for this container
-        // We subtract 2 here because one column is used for the outer border and one for the
-        // container border
-        let max_content_line_length = task_content_area.width as usize - 2;
-        for line in selected_task_content.lines() {
-            // We need to convert &str to a string since we want to do some operations on it
-            let mut owned_line = line.to_owned();
-            loop {
-                // If the line fits on the first line then write the full line
-                if !owned_line.is_empty() && owned_line.len() < max_content_line_length {
-                    // We clone the string here because we store everything we want to write in
-                    // content_to_write
-                    content_to_write = owned_line.clone();
-                    owned_line.clear();
-                // If the line is not empty and still does not fit on one line, then split it and
-                // continue with the loop
-                } else if owned_line.len() > max_content_line_length {
-                    // TODO: Don't split words, we should handle slices that split words
-                    // The correct way to handle this is to search for a whitespace at
-                    // max_content_line_length or before and split there
-                    content_to_write = owned_line[..max_content_line_length].to_string();
-                    owned_line = owned_line[max_content_line_length..].to_string();
-                // If the line is not empty but the remaining characters fit on one line, then
-                // write it to stdout and break from the loop
-                // Break from the loop since we don't have anything to print anymore
-                } else {
-                    break;
-                }
-                go_to_next_line_in_area(stdout, &task_content_area, 1)?;
-                stdout.write_all(content_to_write.as_bytes())?;
+        // Draw border for task content
+        border(
+            buffer,
+            &task_content_area,
+            false,
+            String::from("Content"),
+            None,
+            None,
+        );
+        let max_line_length = task_content_area.width as usize - 2;
+        // TODO: Don't truncate and make this not just a preview but a scrollable area
+        selected_task_content.truncate(max_line_length);
+        for (i, line) in selected_task_content.lines().enumerate() {
+            // If the line fits on the first line then write the full line
+            if !line.is_empty() && line.len() < max_line_length {
+                buffer.write_string(
+                    task_content_area.x + 1,
+                    task_content_area.y + 1 + i as u16,
+                    line.to_string().reset(),
+                );
+            // If the line is not empty and still does not fit on one line
+            // then truncate it
+            } else if line.len() > max_line_length {
+                buffer.write_string(
+                    task_content_area.x + 1,
+                    task_content_area.y + 2 + i as u16,
+                    line[..max_line_length - 3].to_string().reset(),
+                );
+            } else if task_content_area.height - 2 == i as u16 {
+                break;
             }
         }
-
-        Ok(())
     }
 }
