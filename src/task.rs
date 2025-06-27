@@ -110,9 +110,8 @@ impl Widget for TaskContainer {
 
         let done_column_space: usize = 10;
         let created_at_column_space: usize = 19;
-        let title_column_space = (task_list_area.width - 2) as usize
-            - created_at_column_space
-            - done_column_space;
+        let title_column_space =
+            (task_list_area.width - 2) as usize - created_at_column_space - done_column_space;
 
         // Draw header
         let header = build_row(vec![
