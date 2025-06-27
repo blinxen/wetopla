@@ -51,7 +51,6 @@ pub struct TodoApp {
     // Line input wideget
     line_input: LineInput,
     // Event loop that controls draw and crossterm key events
-    // TODO: Remove event loop and put it in main
     event_loop: EventLoop,
     buffer: Buffer,
 }
@@ -199,8 +198,7 @@ impl TodoApp {
         }
 
         // Handle keys without modifier
-        // TODO: Why do we need to borrow here?
-        match &self.input_mode {
+        match self.input_mode {
             InputMode::Normal => {
                 match key.code {
                     KeyCode::Char('q') => {
