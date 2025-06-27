@@ -359,14 +359,14 @@ impl TodoApp {
                 break;
             }
         }
-        // TODO: Remove expect
+        // Reset buffers since we are leaving the current screen which invalidates the buffer state
+        self.buffer.reset();
         terminal::restore_terminal()
             .expect("Error occured when trying to restore the previous state of the terminal!");
-        // TODO: Think about adding some error handling here
         // Maybe display error in the log bar
         self.projects
             .current_project()
-            .unwrap()
+            .expect("Unexpected error: Task is being edited without being assigned to a project")
             .edit_task(task_index);
         terminal::prepare_terminal()
             .expect("Error occured when trying to prepare the terminal for the application!");

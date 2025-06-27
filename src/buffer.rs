@@ -95,4 +95,9 @@ impl Buffer {
 
         Ok(())
     }
+
+    pub fn reset(&mut self) {
+        self.previous = Buffer::init_buffer(self.area.height, self.area.width);
+        self.current = Buffer::init_buffer(self.area.height, self.area.width);
+    }
 }
