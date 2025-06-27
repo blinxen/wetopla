@@ -24,6 +24,7 @@ const MAX_LOG_DURATION: u8 = 3;
 pub enum InputMode {
     Normal,
     Insert,
+    Rename,
     Delete,
     Save,
     Quit,
@@ -95,7 +96,9 @@ impl TodoApp {
                         || self.input_mode == InputMode::Delete
                     {
                         self.message_box.process_input(&key);
-                    } else if self.input_mode == InputMode::Insert {
+                    } else if self.input_mode == InputMode::Insert
+                        || self.input_mode == InputMode::Rename
+                    {
                         self.line_input.process_input(&key);
                     }
                 }
@@ -117,6 +120,7 @@ impl TodoApp {
         match self.input_mode {
             InputMode::Normal => build_row(vec![("INPUT", length)]).black().on_cyan(),
             InputMode::Insert => build_row(vec![("INSERT", length)]).black().on_green(),
+            InputMode::Rename => build_row(vec![("Rename", length)]).black().on_red(),
             InputMode::Save => build_row(vec![("SAVE", length)]).black().on_magenta(),
             InputMode::Quit => build_row(vec![("QUIT", length)]).black().on_grey(),
             InputMode::Delete => build_row(vec![("DELETE", length)]).black().on_grey(),
@@ -170,7 +174,7 @@ impl TodoApp {
             self.message_box.render(&mut self.buffer, &area);
         }
 
-        if self.input_mode == InputMode::Insert {
+        if self.input_mode == InputMode::Insert || self.input_mode == InputMode::Rename {
             self.line_input.render(&mut self.buffer, &area);
         }
 
@@ -215,7 +219,7 @@ impl TodoApp {
                         self.dirty = true;
                         self.projects
                             .current_project()
-                            .unwrap()
+                            .expect("Could not retrieve currently selected project")
                             .toggle_task_done(self.tasks.selected());
                         self.update_tasks();
                     }
@@ -224,6 +228,30 @@ impl TodoApp {
                     if self.tasks.is_focused() {
                         self.dirty = true;
                         self.edit_task(self.tasks.selected()).await;
+                    }
+                }
+                KeyCode::Char('c') => {
+                    if self.projects.current_project().is_some() {
+                        if self.projects.is_focused() {
+                            self.input_mode = InputMode::Rename;
+                            self.line_input.set_value(
+                                self.projects
+                                    .current_project()
+                                    .expect("Could not retrieve currently selected project")
+                                    .title
+                                    .clone(),
+                            );
+                        } else if self.tasks.len() > 0 {
+                            self.input_mode = InputMode::Rename;
+                            self.line_input.set_value(
+                                self.projects
+                                    .current_project()
+                                    .expect("Could not retrieve currently selected project")
+                                    .tasks[self.tasks.selected()]
+                                .title
+                                .clone(),
+                            );
+                        }
                     }
                 }
                 KeyCode::Up => {
@@ -255,9 +283,13 @@ impl TodoApp {
                     }
                 }
                 KeyCode::Delete => {
-                    self.input_mode = InputMode::Delete;
-                    self.message_box
-                        .set_question("Are you sure that you want to delete?");
+                    if self.projects.current_project().is_some()
+                        && (self.projects.is_focused() || self.tasks.len() > 0)
+                    {
+                        self.input_mode = InputMode::Delete;
+                        self.message_box
+                            .set_question("Are you sure that you want to delete?");
+                    }
                 }
                 _ => {}
             },
@@ -268,22 +300,48 @@ impl TodoApp {
                 }
                 KeyCode::Enter => {
                     // Min project / task title is 3
-                    if !self.line_input.value().is_empty() || self.line_input.value().len() > 3 {
+                    if self.line_input.value().len() > 3 {
                         self.input_mode = InputMode::Normal;
                         self.dirty = true;
 
                         if self.projects.is_focused() {
                             // Add project to projects list
                             self.projects.add_project(self.line_input.value());
-                        } else {
+                        } else if let Some(current_project) = self.projects.current_project() {
                             // Add task to project and open editor to write the content of the task
-                            self.projects
-                                .current_project()
-                                .unwrap()
-                                .add_task(self.line_input.value());
+                            current_project.add_task(self.line_input.value());
                             self.edit_task(self.tasks.len()).await;
                         }
                         self.update_tasks();
+                        self.line_input.close();
+                    }
+                }
+                _ => {}
+            },
+            InputMode::Rename => match key.code {
+                KeyCode::Esc => {
+                    self.input_mode = InputMode::Normal;
+                    self.line_input.close();
+                }
+                KeyCode::Enter => {
+                    // Min project / task title is 3
+                    if self.line_input.value().len() > 3 {
+                        self.input_mode = InputMode::Normal;
+                        self.dirty = true;
+
+                        if self.projects.is_focused() {
+                            self.projects
+                                .current_project()
+                                .expect("Could not retrieve currently selected project")
+                                .title = self.line_input.value();
+                        } else {
+                            self.projects
+                                .current_project()
+                                .expect("Could not retrieve currently selected project")
+                                .tasks[self.tasks.selected()]
+                            .title = self.line_input.value();
+                            self.update_tasks();
+                        }
                         self.line_input.close();
                     }
                 }
@@ -293,14 +351,17 @@ impl TodoApp {
                 KeyCode::Esc | KeyCode::Enter => {
                     self.input_mode = InputMode::Normal;
 
-                    if key.code == KeyCode::Enter && self.message_box.accepted() {
+                    if key.code == KeyCode::Enter
+                        && self.message_box.accepted()
+                        && self.projects.current_project().is_some()
+                    {
                         self.dirty = true;
                         if self.projects.is_focused() {
                             self.projects.remove_selected_project();
                         } else {
                             self.projects
                                 .current_project()
-                                .unwrap()
+                                .expect("Could not retrieve currently selected project")
                                 .remove_selected_task(self.tasks.selected());
                             self.update_tasks();
                         }

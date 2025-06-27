@@ -23,6 +23,10 @@ impl LineInput {
     pub fn value(&self) -> String {
         self.input.to_owned()
     }
+
+    pub fn set_value(&mut self, input: String) {
+        self.input = input;
+    }
 }
 
 impl Widget for LineInput {
