@@ -108,28 +108,28 @@ impl Widget for TaskContainer {
             None,
         );
 
-        let done_column_space = 10;
-        let created_at_column_space = 19;
-        let title_column_space = (task_list_area.width as f32 * 0.95) as u16
+        let done_column_space: usize = 10;
+        let created_at_column_space: usize = 19;
+        let title_column_space = (task_list_area.width - 2) as usize
             - created_at_column_space
             - done_column_space;
 
         // Draw header
         let header = build_row(vec![
-            ("Title", title_column_space as usize),
-            ("Done", done_column_space as usize),
-            ("Created At", created_at_column_space as usize),
+            ("Title", title_column_space),
+            ("Done", done_column_space),
+            ("Created At", created_at_column_space),
         ]);
         buffer.write_string(task_list_area.x + 1, task_list_area.y + 1, header.bold());
 
         // Draw tasks
         for (i, task) in self.tasks.iter().enumerate() {
             let mut styled_task = build_row(vec![
-                (&task.title, title_column_space as usize),
-                (&task.done.to_string(), done_column_space as usize),
+                (&task.title, title_column_space),
+                (&task.done.to_string(), done_column_space),
                 (
                     &task.created_at.format("%d.%m.%Y %H:%M:%S").to_string(),
-                    created_at_column_space as usize,
+                    created_at_column_space,
                 ),
             ])
             .white();
