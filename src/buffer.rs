@@ -87,14 +87,14 @@ impl Buffer {
                     let abs_row = row as u16 + self.area.y;
 
                     // Don't show lines that don't fit vertically
-                    if self.area.height < abs_row {
+                    if (self.area.y + self.area.height) < abs_row {
                         continue 'outer;
                     }
 
                     self.stdout.queue(MoveTo(abs_column, abs_row))?;
 
                     // Truncate lines that don't fit horizontally
-                    if self.area.width < abs_column {
+                    if (self.area.x + self.area.width) < abs_column {
                         self.stdout.queue(MoveTo(abs_column - 4, abs_row))?;
                         self.stdout.queue(PrintStyledContent(StyledContent::new(
                             *cell.style(),
