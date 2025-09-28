@@ -13,6 +13,9 @@
 - `i`: Enter input mode
     - if project container is focused then a new project can be created
     - if task container is focused then a new task can be created
+- `c`: Enter rename mode
+    - if project container is focused then a new project can be created
+    - if task container is focused then a new task can be created
 - `e`: Edit task content
 - `d`: Set task to done
 - `<ENTER>`: Select currently highlighted project and focus task container
@@ -23,6 +26,11 @@
 
 - `<ESC>`: Cancel line input and enter normal mode
 - `<ENTER>`: Create project or add task to project and enter normal mode
+
+### Rename mode
+
+- `<ESC>`: Cancel operation and enter normal mode
+- `<Enter>`: Rename project or task and enter normal mode
 
 ### Delete mode
 
