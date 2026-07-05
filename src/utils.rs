@@ -89,7 +89,7 @@ pub fn split_rect_by_height(rect: &Rect) -> (Rect, Rect) {
 
     one.height = height + 1;
     two.y += one.height;
-    two.height = height;
+    two.height = height - 1;
 
     (one, two)
 }

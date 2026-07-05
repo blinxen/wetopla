@@ -137,8 +137,13 @@ impl Widget for TaskContainer {
                     &task.created_at.format("%d.%m.%Y %H:%M:%S").to_string(),
                     created_at_column_space,
                 ),
-            ])
-            .white();
+            ]);
+
+            styled_task = if task.done {
+                styled_task.green()
+            } else {
+                styled_task.yellow()
+            };
 
             if i == self.selected {
                 selected_task_content = task.content.clone();

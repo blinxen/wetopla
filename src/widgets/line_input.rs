@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crossterm::style::Stylize;
 
 use crate::buffer::Buffer;
@@ -76,14 +76,16 @@ impl PopupWidget for LineInput {
                     self.visible = false;
                     self.input.clear();
                 }
-                // KeyCode::Left => todo!(),
-                // KeyCode::Right => todo!(),
-                // KeyCode::Up => todo!(),
-                // KeyCode::Down => todo!(),
-                // KeyCode::Home => todo!(),
-                // KeyCode::End => todo!(),
-                // KeyCode::Delete => todo!(),
                 _ => {}
+            }
+            // key codes but with modifiers
+            if let KeyEvent {
+                code: KeyCode::Char('w'),
+                modifiers: KeyModifiers::CONTROL,
+                ..
+            } = key_event
+            {
+                self.input.clear();
             }
         } else {
             self.visible = true;

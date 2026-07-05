@@ -78,9 +78,7 @@ impl TodoApp {
         loop {
             match self.event_loop.event_rx.recv().await {
                 Some(Event::Draw) => {
-                    // Reset log message after 5 Draw events
-                    // which equals to 5 seconds
-                    if self.log_message_duration == MAX_LOG_DURATION {
+                    if self.log_message_duration > MAX_LOG_DURATION {
                         self.log_message = String::new();
                     }
                     // Increment log duration
@@ -120,7 +118,7 @@ impl TodoApp {
         match self.input_mode {
             InputMode::Normal => build_row(vec![("INPUT", length as usize)]).black().on_cyan(),
             InputMode::Insert => build_row(vec![("INSERT", length as usize)]).black().on_green(),
-            InputMode::Rename => build_row(vec![("Rename", length as usize)]).black().on_red(),
+            InputMode::Rename => build_row(vec![("RENAME", length as usize)]).black().on_red(),
             InputMode::Save => build_row(vec![("SAVE", length as usize)]).black().on_magenta(),
             InputMode::Quit => build_row(vec![("QUIT", length as usize)]).black().on_grey(),
             InputMode::Delete => build_row(vec![("DELETE", length as usize)]).black().on_grey(),
@@ -156,6 +154,13 @@ impl TodoApp {
             area.x,
             area.height - 2,
             self.mode(area.width),
+        );
+
+        // Draw log line
+        self.buffer.write_string(
+            area.x,
+            area.height - 1,
+            build_row(vec![(&self.log_message, area.width as usize - 2)]),
         );
 
         if self.input_mode == InputMode::Save
@@ -221,7 +226,7 @@ impl TodoApp {
                         self.edit_task(self.tasks.selected()).await;
                     }
                 }
-                KeyCode::Char('c') => {
+                KeyCode::Char('r') => {
                     if self.projects.current_project().is_some() {
                         if self.projects.is_focused() {
                             self.input_mode = InputMode::Rename;
@@ -305,6 +310,8 @@ impl TodoApp {
                         }
                         self.update_tasks();
                         self.line_input.close();
+                    } else {
+                        self.log("Minimum number of characters is 3");
                     }
                 }
                 _ => {}
@@ -334,6 +341,8 @@ impl TodoApp {
                             self.update_tasks();
                         }
                         self.line_input.close();
+                    } else {
+                        self.log("Minimum number of characters is 3");
                     }
                 }
                 _ => {}
@@ -390,8 +399,8 @@ impl TodoApp {
         }
     }
 
-    fn log(&mut self, message: String) {
-        self.log_message = message;
+    fn log(&mut self, message: &str) {
+        self.log_message = message.to_owned();
         self.log_message_duration = 0;
     }
 
@@ -451,13 +460,13 @@ impl TodoApp {
             serde_json::to_writer(data_file, &self.projects)
                 .or_else(|x| {
                     // Print error to log bar
-                    self.log(x.to_string());
+                    self.log(&x.to_string());
                     Ok::<(), ()>(())
                 })
                 .unwrap();
-            self.log("Saved".to_string());
+            self.log("Saved");
         } else {
-            self.log(data_file.err().unwrap().to_string());
+            self.log(&data_file.err().unwrap().to_string());
         }
 
         self.dirty = false;

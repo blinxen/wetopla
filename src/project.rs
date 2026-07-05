@@ -1,7 +1,7 @@
 use crate::application::TodoApp;
 use crate::buffer::Buffer;
 use crate::task::Task;
-use crate::utils::{Rect, border};
+use crate::utils::{Rect, border, build_row};
 use crate::widgets::{ContainerWidget, Widget};
 use chrono::Local;
 use crossterm::style::Stylize;
@@ -162,16 +162,19 @@ impl Widget for ProjectContainer {
             None,
         );
         for (i, project) in self.projects.iter().enumerate() {
-            let mut styled_project = format!(
-                "{}: {}",
-                i,
-                if project.title.len() > area.width as usize - 5 {
-                    project.title[..area.width as usize - 5].to_owned()
-                } else {
-                    project.title.to_owned()
-                }
-            )
+            let mut styled_project = build_row(vec![
+                (&format!("{}: ", i), 3),
+                (
+                    if project.title.len() > area.width as usize - 5 {
+                        &project.title[..area.width as usize - 5]
+                    } else {
+                        &project.title
+                    },
+                    available_area.width as usize - 5
+                )
+            ])
             .white();
+
             if i == self.selected {
                 styled_project = styled_project.black().on_white();
             }
