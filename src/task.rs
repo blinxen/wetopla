@@ -145,7 +145,7 @@ impl Widget for TaskContainer {
                 styled_task.yellow()
             };
 
-            if i == self.selected {
+            if i == self.selected && self.focused {
                 selected_task_content = task.content.clone();
                 styled_task = styled_task.black().on_white();
             }
