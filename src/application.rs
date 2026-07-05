@@ -8,7 +8,7 @@ use crate::project::ProjectContainer;
 use crate::task::TaskContainer;
 use crate::terminal;
 use crate::utils::Rect;
-use crate::utils::{border, build_row};
+use crate::utils::build_row;
 use crate::widgets::Widget;
 use crate::widgets::line_input::LineInput;
 use crate::widgets::message_box::MessageBox;
@@ -16,7 +16,7 @@ use crate::widgets::{ContainerWidget, PopupWidget};
 use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crossterm::style::Stylize;
-use crossterm::style::{Color, StyledContent};
+use crossterm::style::StyledContent;
 
 const MAX_LOG_DURATION: u8 = 3;
 
@@ -116,14 +116,14 @@ impl TodoApp {
         Ok(())
     }
 
-    fn mode(&self, length: usize) -> StyledContent<String> {
+    fn mode(&self, length: u16) -> StyledContent<String> {
         match self.input_mode {
-            InputMode::Normal => build_row(vec![("INPUT", length)]).black().on_cyan(),
-            InputMode::Insert => build_row(vec![("INSERT", length)]).black().on_green(),
-            InputMode::Rename => build_row(vec![("Rename", length)]).black().on_red(),
-            InputMode::Save => build_row(vec![("SAVE", length)]).black().on_magenta(),
-            InputMode::Quit => build_row(vec![("QUIT", length)]).black().on_grey(),
-            InputMode::Delete => build_row(vec![("DELETE", length)]).black().on_grey(),
+            InputMode::Normal => build_row(vec![("INPUT", length as usize)]).black().on_cyan(),
+            InputMode::Insert => build_row(vec![("INSERT", length as usize)]).black().on_green(),
+            InputMode::Rename => build_row(vec![("Rename", length as usize)]).black().on_red(),
+            InputMode::Save => build_row(vec![("SAVE", length as usize)]).black().on_magenta(),
+            InputMode::Quit => build_row(vec![("QUIT", length as usize)]).black().on_grey(),
+            InputMode::Delete => build_row(vec![("DELETE", length as usize)]).black().on_grey(),
         }
     }
 
@@ -132,39 +132,30 @@ impl TodoApp {
         // This is normally the whole teminal size
         let area = terminal::size();
         self.buffer.resize(&area);
-        border(
-            &mut self.buffer,
-            &area,
-            false,
-            String::new(),
-            None,
-            Some(self.log_message.clone().on(Color::Reset).with(Color::White)),
-        );
+
         // Display projects
         let projects_area = Rect {
-            x: area.x + 1,
-            y: area.y + 1,
+            x: area.x,
+            y: area.y,
             width: (area.width as f32 * 0.20) as u16,
-            // 5 was chosen from: y offset (1) + the number of of lines we want to reserve for (4)
-            // other stuff
-            height: area.height - 5,
+            height: area.height - 2,
         };
         self.projects.render(&mut self.buffer, &projects_area);
 
         // Display tasks
         let tasks_area = Rect {
-            x: projects_area.width + 1,
+            x: projects_area.width,
             y: projects_area.y,
-            width: area.width - projects_area.width - 2,
+            width: area.width - projects_area.width,
             height: projects_area.height,
         };
         self.tasks.render(&mut self.buffer, &tasks_area);
 
         // Draw mode
         self.buffer.write_string(
-            area.x + 1,
-            area.height - 3,
-            self.mode(area.width as usize - 2),
+            area.x,
+            area.height - 2,
+            self.mode(area.width),
         );
 
         if self.input_mode == InputMode::Save

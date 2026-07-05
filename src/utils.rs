@@ -88,8 +88,8 @@ pub fn split_rect_by_height(rect: &Rect) -> (Rect, Rect) {
     let mut two = rect.clone();
 
     one.height = height + 1;
-    two.y += height + 1;
-    two.height = height - 1;
+    two.y += one.height;
+    two.height = height;
 
     (one, two)
 }
